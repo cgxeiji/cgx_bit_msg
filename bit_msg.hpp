@@ -25,8 +25,8 @@ struct msg {
         return on_unmarshal(bytes.data(), NBytes, bit_offset);
     }
 
-    virtual std::uint32_t id() const noexcept = 0;
-    virtual bool is_valid() const noexcept = 0;
+    virtual std::uint32_t id() const noexcept       = 0;
+    virtual bool          is_valid() const noexcept = 0;
 
     operator bool() const noexcept { return is_valid(); }
 
@@ -46,14 +46,14 @@ class msg_logger {
     }
 
     template <typename TMsg>
-    void on_error_condition(const TMsg& msg,
+    void on_error_condition(const TMsg&         msg,
                             const std::uint32_t field_id) const noexcept {
         (void)msg;
         (void)field_id;
     }
 
     template <typename TMsg>
-    void on_error_unmarshal(const TMsg& msg,
+    void on_error_unmarshal(const TMsg&         msg,
                             const std::uint32_t field_id) const noexcept {
         (void)msg;
         (void)field_id;
@@ -89,7 +89,6 @@ struct msg_t : public msg {
             std::tuple<TArgs...>& args) noexcept {
         auto& field = std::get<I>(args);
         if (!field.unmarshal(bytes, bit_offset)) {
-            logger.on_error_unmarshal(*this, field.id());
             return false;
         }
         return unmarshal_tuple<I + 1>(bytes, bit_offset + field.n_bits, args);
@@ -120,18 +119,17 @@ struct msg_t : public msg {
             const std::tuple<TArgs...>& args) const noexcept {
         auto& field = std::get<I>(args);
         if (!field.is_valid()) {
-            logger.on_error_condition(*this, field.id());
             return false;
         }
         return is_valid_tuple<I + 1>(args);
     }
 
-    bool valid = false;
+    bool                              valid      = false;
     std::function<void(const msg_t&)> m_callback = nullptr;
 
    public:
     static constexpr auto n_fields = sizeof...(TFields);
-    static constexpr auto n_bits = sum_bits<TFields...>();
+    static constexpr auto n_bits   = sum_bits<TFields...>();
 
     using fields_type = std::tuple<TFields...>;
     std::tuple<TFields...> fields;
@@ -149,7 +147,7 @@ struct msg_t : public msg {
                     const TFields&... fields) noexcept
         : m_callback(callback), fields(fields...) {}
     constexpr msg_t(const std::function<void(const msg_t&)>& callback,
-                    const std::tuple<TFields...>& fields) noexcept
+                    const std::tuple<TFields...>&            fields) noexcept
         : m_callback(callback), fields(fields) {}
     constexpr msg_t(const msg_t& other) noexcept
         : m_callback(other.m_callback), fields(other.fields) {}
@@ -202,15 +200,12 @@ struct msg_t : public msg {
 
     bool on_unmarshal(const std::uint8_t* bytes, const std::size_t len,
                       const std::size_t bit_offset) noexcept override {
-        logger.on_unmarshal_start(*this);
         if (len * 8 - bit_offset < n_bits) {
             valid = false;
-            logger.on_error_bit_size(*this, len * 8 - bit_offset, n_bits);
             return false;
         }
         std::size_t offset = bit_offset;
-        valid = unmarshal_tuple(bytes, offset, fields);
-        logger.on_unmarshal_end(*this);
+        valid              = unmarshal_tuple(bytes, offset, fields);
         if (valid && m_callback != nullptr) {
             m_callback(*this);
         }
@@ -237,17 +232,17 @@ template <typename TLogger, typename TID, typename TCallback,
 cgx::bit::msg_t<TLogger, TID, TOtherfields..., TFields...> _make_msg_cat(
     const TLogger&, const TID&, TCallback&& cb,
     std::tuple<TOtherfields...>& other, const TFields&... fields) noexcept {
-    auto tuple = std::make_tuple(fields...);
+    auto tuple  = std::make_tuple(fields...);
     auto concat = std::tuple_cat(other, tuple);
-    return cgx::bit::msg_t<TLogger, TID, TOtherfields..., TFields...>(cb,
-                                                                      concat);
+    return cgx::bit::msg_t<TLogger, TID, TOtherfields..., TFields...>(
+        cb, concat);
 }
 
 template <typename TID, typename TCallback, typename TOther,
           typename... TFields>
 auto make_msg_cat(const TID& id, TCallback&& cb, TOther& other,
                   const TFields&... fields) noexcept {
-    return _make_msg_cat(other.get_logger(), id, cb, other.fields, fields...);
+    return _make_msg_cat(msg_logger(), id, cb, other.fields, fields...);
 }
 
 }  // namespace bit
