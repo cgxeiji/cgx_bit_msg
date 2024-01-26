@@ -25,8 +25,8 @@ struct msg {
         return on_unmarshal(bytes.data(), NBytes, bit_offset);
     }
 
-    virtual std::uint32_t id() const noexcept = 0;
-    virtual bool is_valid() const noexcept = 0;
+    virtual std::uint32_t id() const noexcept       = 0;
+    virtual bool          is_valid() const noexcept = 0;
 
     operator bool() const noexcept { return is_valid(); }
 
@@ -46,14 +46,14 @@ class msg_logger {
     }
 
     template <typename TMsg>
-    void on_error_condition(const TMsg& msg,
+    void on_error_condition(const TMsg&         msg,
                             const std::uint32_t field_id) const noexcept {
         (void)msg;
         (void)field_id;
     }
 
     template <typename TMsg>
-    void on_error_unmarshal(const TMsg& msg,
+    void on_error_unmarshal(const TMsg&         msg,
                             const std::uint32_t field_id) const noexcept {
         (void)msg;
         (void)field_id;
@@ -75,6 +75,7 @@ struct msg_t : public msg {
    private:
     static constexpr TLogger logger{};
 
+    // unmarshal
     template <std::size_t I = 0, typename... TArgs>
     typename std::enable_if<I == sizeof...(TArgs), bool>::
         type constexpr unmarshal_tuple(const std::uint8_t*, const std::size_t,
@@ -95,6 +96,43 @@ struct msg_t : public msg {
         return unmarshal_tuple<I + 1>(bytes, bit_offset + field.n_bits, args);
     }
 
+    // marshal
+    template <std::size_t I = 0, typename... TArgs>
+    typename std::enable_if<I == sizeof...(TArgs), void>::type marshal_tuple(
+        const std::tuple<TArgs...>&, std::uint8_t*,
+        std::size_t&) const noexcept {
+        return;
+    }
+
+    template <std::size_t I = 0, typename... TArgs>
+        typename std::enable_if <
+        I<sizeof...(TArgs), void>::type marshal_tuple(
+            const std::tuple<TArgs...>& args, std::uint8_t* bytes,
+            std::size_t& bit_offset) const noexcept {
+        const auto& field       = std::get<I>(args);
+        const auto  byte_offset = bit_offset / 8;
+        const auto  byte_shift  = bit_offset % 8;
+
+        auto data = field.marshal();
+
+        std::uint16_t overflow = 0;
+        for (std::size_t i = 0; i < field.n_bytes; i++) {
+            std::uint16_t byte = bytes[byte_offset + i];
+            byte |= overflow;
+            byte |= data[i] << byte_shift;
+            overflow = byte >> 8;
+
+            bytes[byte_offset + i] = byte;
+        }
+        if (overflow != 0) {
+            bytes[byte_offset + field.n_bytes] |= overflow;
+        }
+
+        bit_offset += field.n_bits;
+        marshal_tuple<I + 1>(args, bytes, bit_offset);
+    }
+
+    // sum_bits
     template <typename TArg, typename... TArgs>
     static typename std::enable_if<sizeof...(TArgs) == 0, std::size_t>::
         type constexpr sum_bits() noexcept {
@@ -127,11 +165,13 @@ struct msg_t : public msg {
     }
 
     bool valid = false;
+
     std::function<void(const msg_t&)> m_callback = nullptr;
 
    public:
     static constexpr auto n_fields = sizeof...(TFields);
-    static constexpr auto n_bits = sum_bits<TFields...>();
+    static constexpr auto n_bits   = sum_bits<TFields...>();
+    static constexpr auto n_bytes  = (n_bits + 7) / 8;
 
     using fields_type = std::tuple<TFields...>;
     std::tuple<TFields...> fields;
@@ -149,7 +189,7 @@ struct msg_t : public msg {
                     const TFields&... fields) noexcept
         : m_callback(callback), fields(fields...) {}
     constexpr msg_t(const std::function<void(const msg_t&)>& callback,
-                    const std::tuple<TFields...>& fields) noexcept
+                    const std::tuple<TFields...>&            fields) noexcept
         : m_callback(callback), fields(fields) {}
     constexpr msg_t(const msg_t& other) noexcept
         : m_callback(other.m_callback), fields(other.fields) {}
@@ -209,12 +249,21 @@ struct msg_t : public msg {
             return false;
         }
         std::size_t offset = bit_offset;
-        valid = unmarshal_tuple(bytes, offset, fields);
+        valid              = unmarshal_tuple(bytes, offset, fields);
         logger.on_unmarshal_end(*this);
         if (valid && m_callback != nullptr) {
             m_callback(*this);
         }
         return valid;
+    }
+
+    constexpr auto marshal() const noexcept {
+        std::array<std::uint8_t, n_bytes> bytes{};
+
+        std::size_t bit_offset = 0;
+        marshal_tuple(fields, bytes.data(), bit_offset);
+
+        return bytes;
     }
 };
 
@@ -237,10 +286,10 @@ template <typename TLogger, typename TID, typename TCallback,
 cgx::bit::msg_t<TLogger, TID, TOtherfields..., TFields...> _make_msg_cat(
     const TLogger&, const TID&, TCallback&& cb,
     std::tuple<TOtherfields...>& other, const TFields&... fields) noexcept {
-    auto tuple = std::make_tuple(fields...);
+    auto tuple  = std::make_tuple(fields...);
     auto concat = std::tuple_cat(other, tuple);
-    return cgx::bit::msg_t<TLogger, TID, TOtherfields..., TFields...>(cb,
-                                                                      concat);
+    return cgx::bit::msg_t<TLogger, TID, TOtherfields..., TFields...>(
+        cb, concat);
 }
 
 template <typename TID, typename TCallback, typename TOther,

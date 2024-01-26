@@ -26,7 +26,7 @@ struct field_t {
             return ok;
         };
 
-    bool m_valid = false;
+    bool           m_valid = false;
     constexpr auto validate() noexcept {
         if (m_condition == nullptr) {
             m_valid = true;
@@ -36,10 +36,10 @@ struct field_t {
     }
 
    public:
-    using value_type = T;
-    static constexpr auto n_bits = NBitsT;
+    using value_type                = T;
+    static constexpr auto n_bits    = NBitsT;
     static constexpr auto endianess = EndianessT;
-    static constexpr auto n_bytes = (n_bits + 7) / 8;
+    static constexpr auto n_bytes   = (n_bits + 7) / 8;
     static_assert(NBitsT <= sizeof(T) * 8, "n_bits exceeds the size of T");
     static_assert(sizeof(T) <= sizeof(std::uint32_t), "T exceeds 32 bits");
 
@@ -58,7 +58,7 @@ struct field_t {
     constexpr field_t(field_t&& other) noexcept
         : m_condition(other.m_condition), m_value(other.m_value) {}
     constexpr field_t(const std::uint8_t* bytes,
-                      const std::size_t bit_offset = 0) noexcept
+                      const std::size_t   bit_offset = 0) noexcept
         : m_value(unmarshal(bytes, bit_offset)) {}
 
     constexpr field_t(
@@ -66,7 +66,7 @@ struct field_t {
         : m_condition(condition) {}
 
     constexpr auto operator=(const field_t& other) noexcept -> field_t& {
-        m_value = other.m_value;
+        m_value     = other.m_value;
         m_condition = other.m_condition;
         validate();
         return *this;
@@ -129,7 +129,7 @@ struct field_t {
     }
 
     constexpr auto lsb_unmarshal(const std::uint8_t* bytes,
-                                 const std::size_t bit_offset = 0) noexcept {
+                                 const std::size_t   bit_offset = 0) noexcept {
         static_assert(NBitsT <= sizeof(std::uint32_t) * 8,
                       "n_bits exceeds the size of std::uint32_t");
         std::uint32_t raw = 0;
@@ -140,7 +140,7 @@ struct field_t {
     }
 
     constexpr auto msb_unmarshal(const std::uint8_t* bytes,
-                                 const std::size_t bit_offset = 0) noexcept {
+                                 const std::size_t   bit_offset = 0) noexcept {
         static_assert(NBitsT <= sizeof(std::uint32_t) * 8,
                       "n_bits exceeds the size of std::uint32_t");
         std::uint32_t raw = 0;
@@ -155,7 +155,7 @@ struct field_t {
     // and decodes the underlying variable. It does not check for out of bounds
     // access.
     constexpr auto unmarshal(const std::uint8_t* bytes,
-                             const std::size_t bit_offset = 0) noexcept
+                             const std::size_t   bit_offset = 0) noexcept
         -> bool {
         uint32_t raw = 0;
         if (EndianessT == endianess::little) {
@@ -170,7 +170,7 @@ struct field_t {
 
     constexpr auto marshal() const noexcept {
         std::array<std::uint8_t, n_bytes> bytes = {0};
-        std::uint32_t raw = 0;
+        std::uint32_t                     raw   = 0;
         memcpy(&raw, &m_value, sizeof(m_value));
         if (EndianessT == endianess::little) {
             for (std::size_t i = 0; i < n_bits; i++) {
@@ -286,6 +286,12 @@ struct field_t {
         const std::function<bool(field_t&, const value_type&)>&
             condition) noexcept {
         m_condition = condition;
+        return *this;
+    }
+
+    constexpr auto init(const value_type& value) noexcept -> field_t& {
+        m_value = value;
+        validate();
         return *this;
     }
 };
