@@ -19,9 +19,9 @@ struct field_t {
         [](field_t& var, const value_type& v) {
             (void)var;
             constexpr auto min = std::numeric_limits<T>::min();
-            constexpr auto max =
-                static_cast<T>(NBitsT == 32 ? std::numeric_limits<T>::max()
-                                            : (1 << NBitsT) - 1);
+            constexpr auto max = std::numeric_limits<T>::max();
+            // static_cast<T>(NBitsT == 32 ? std::numeric_limits<T>::max()
+            //: (1 << NBitsT) - 1);
             bool ok = v >= min && v <= max;
             return ok;
         };
@@ -169,7 +169,7 @@ struct field_t {
     }
 
     constexpr auto marshal() const noexcept {
-        std::array<std::uint8_t, n_bytes> bytes = {0};
+        std::array<std::uint8_t, n_bytes> bytes = {};
         std::uint32_t                     raw   = 0;
         memcpy(&raw, &m_value, sizeof(m_value));
         if (EndianessT == endianess::little) {
