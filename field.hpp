@@ -18,7 +18,7 @@ struct field_t {
     std::function<bool(field_t&, const T&)> m_condition =
         [](field_t& var, const value_type& v) {
             (void)var;
-            constexpr auto min = std::numeric_limits<T>::min();
+            constexpr auto min = std::numeric_limits<T>::lowest();
             constexpr auto max = std::numeric_limits<T>::max();
             // static_cast<T>(NBitsT == 32 ? std::numeric_limits<T>::max()
             //: (1 << NBitsT) - 1);
@@ -84,7 +84,7 @@ struct field_t {
     }
 
     constexpr value_type value() const noexcept { return m_value; }
-    constexpr operator bool() const noexcept { return is_valid(); }
+    constexpr            operator bool() const noexcept { return is_valid(); }
 
     constexpr auto operator==(const value_type& other) const noexcept -> bool {
         return m_value == other;
