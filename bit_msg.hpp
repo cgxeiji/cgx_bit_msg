@@ -166,7 +166,8 @@ struct msg_t : public msg {
 
     bool valid = false;
 
-    std::function<void(const msg_t&)> m_callback = nullptr;
+    std::function<void(const msg_t&)> m_callback         = nullptr;
+    std::function<bool(const msg_t&)> m_custom_validator = nullptr;
 
    public:
     static constexpr auto n_fields = sizeof...(TFields);
@@ -192,9 +193,13 @@ struct msg_t : public msg {
                     const std::tuple<TFields...>&            fields) noexcept
         : m_callback(callback), fields(fields) {}
     constexpr msg_t(const msg_t& other) noexcept
-        : m_callback(other.m_callback), fields(other.fields) {}
+        : m_callback(other.m_callback),
+          m_custom_validator(other.m_custom_validator),
+          fields(other.fields) {}
     constexpr msg_t(msg_t&& other) noexcept
-        : m_callback(other.m_callback), fields(other.fields) {}
+        : m_callback(other.m_callback),
+          m_custom_validator(other.m_custom_validator),
+          fields(other.fields) {}
 
     constexpr auto operator==(const msg_t& other) const noexcept -> bool {
         return fields == other.fields;
@@ -203,11 +208,30 @@ struct msg_t : public msg {
         return fields != other.fields;
     }
 
-    void set_callback(const std::function<void(const msg_t&)>& callback) {
+    auto set_callback(const std::function<void(const msg_t&)>& callback) {
         m_callback = callback;
+        return *this;
     }
 
-    bool is_valid() const noexcept override { return is_valid_tuple(fields); }
+    auto set_custom_validator(
+        const std::function<bool(const msg_t&)>& custom_validator) {
+        m_custom_validator = custom_validator;
+        return *this;
+    }
+
+    bool is_valid() const noexcept override {
+        const bool valid = is_valid_tuple(fields);
+        if (m_custom_validator != nullptr) {
+            return valid && m_custom_validator(*this);
+        }
+        return valid;
+    }
+
+    void run_callback() const noexcept {
+        if (m_callback != nullptr) {
+            m_callback(*this);
+        }
+    }
 
     template <typename TField>
     constexpr auto& get() noexcept {
@@ -251,6 +275,9 @@ struct msg_t : public msg {
         std::size_t offset = bit_offset;
         valid              = unmarshal_tuple(bytes, offset, fields);
         logger.on_unmarshal_end(*this);
+        if (valid && m_custom_validator != nullptr) {
+            valid = m_custom_validator(*this);
+        }
         if (valid && m_callback != nullptr) {
             m_callback(*this);
         }
